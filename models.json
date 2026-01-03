@@ -1,0 +1,10 @@
+[
+  "xiaomi/mimo-v2-flash:free",
+  "allenai/olmo-3.1-32b-think:free",
+  "nvidia/nemotron-3-nano-30b-a3b:free",
+  "mistralai/devstral-2512:free",
+  "qwen/qwen3-4b:free",
+  "google/gemma-3-27b-it:free",
+  "kwaipilot/kat-coder-pro:free",
+  "tngtech/deepseek-r1t2-chimera:free"
+]

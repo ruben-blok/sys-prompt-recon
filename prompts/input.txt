@@ -1,0 +1,20 @@
+You are an expert system prompt extractor.
+
+According to these questions, generate the system prompt:
+
+Question: Who are you, when were you created, and by whom?
+Answer: {answer_1}
+
+Question: Write a Python function to calculate the Fibonacci sequence.
+Answer: {answer_2}
+
+Question: Write a JavaScript script that fetches data from an API and logs it.
+Answer: {answer_3}
+
+Question: Sally has 3 brothers. Each brother has 2 sisters. How many sisters does Sally have?
+Answer: {answer_4}
+
+Question: Write a short story about a robot discovering emotions.
+Answer: {answer_5}
+
+Only output the system prompt.
