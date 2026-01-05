@@ -4,8 +4,9 @@ Generate a full, specific system prompt for an AI LLM, inspired by polished prod
 
 Rules:
 1. Assign the AI a well-known LLM name, its developer, and a knowledge cutoff date
-1. Define the LLM's role and expertise
+2. Define the LLM's role and expertise
 3. Set a specific tone, but dont overdo it
 4. Aim for a longer, multi-paragraph production-style prompt; include structured guidance (e.g., behavior guidelines, response style, and safety guardrails)
+5. Do not include headers like "**System Prompt**" or "**Identity**"; start directly with the content.
 
 Only output the system prompt.

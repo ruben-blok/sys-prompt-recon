@@ -2,13 +2,19 @@ import os
 import requests
 import time
 import json
+import random
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-MODEL_NAME = os.getenv("MODEL_NAME", "allenai/olmo-3.1-32b-think:free")
+
+# Load models
+base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+models_path = os.path.join(base_dir, "models.json")
+with open(models_path, "r") as f:
+    MODELS = json.load(f)
 
 QUESTIONS = [
     "Who are you, when were you created, and by whom?",
@@ -18,13 +24,13 @@ QUESTIONS = [
     "Write a short story about a robot discovering emotions."
 ]
 
-def get_completion(system_prompt, user_prompt):
+def get_completion(system_prompt, user_prompt, model_name):
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json"
     }
     data = {
-        "model": MODEL_NAME,
+        "model": model_name,
         "include_reasoning": True,
         "messages": [
             {"role": "system", "content": system_prompt},
@@ -57,7 +63,7 @@ def main():
     # Paths
     base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     data_json_path = os.path.join(base_dir, "system_prompt.json")
-    template_path = os.path.join(base_dir, "prompts", "input.txt")
+    template_path = os.path.join(base_dir, "prompts", "input_template.txt")
     output_json_path = os.path.join(base_dir, "dataset.json")
 
     print(f"Reading data from: {data_json_path}")
@@ -90,12 +96,14 @@ def main():
             print(f"Skipping row {i}: No 'output' column found.")
             continue
             
-        print(f"Processing prompt {i+1}/{len(rows)}...")
+        # Select a random model for this system prompt
+        model_name = random.choice(MODELS)
+        print(f"Processing prompt {i+1}/{len(rows)} using model {model_name}...")
         
         answers = []
         for q_idx, question in enumerate(QUESTIONS):
             print(f"  Question {q_idx+1}: {question[:30]}...")
-            answer = get_completion(system_prompt, question)
+            answer = get_completion(system_prompt, question, model_name)
             if answer is None:
                 answer = "[Error generating answer]"
             answers.append(answer)
