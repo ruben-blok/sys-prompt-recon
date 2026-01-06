@@ -10,14 +10,14 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
 # Paths
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-MODELS_PATH = os.path.join(BASE_DIR, "models.json")
+MODELS_PATH = os.path.join(BASE_DIR, "src", "V1", "models.json")
 SYSTEM_PROMPT_TEMPLATE_PATH = os.path.join(BASE_DIR, "prompts", "generate_system_prompt.txt")
 INPUT_TEMPLATE_PATH = os.path.join(BASE_DIR, "prompts", "input_template.txt")
 SYSTEM_PROMPT_JSON_PATH = os.path.join(BASE_DIR, "system_prompt.json")
 DATASET_JSON_PATH = os.path.join(BASE_DIR, "dataset.json")
 
 TARGET_DATASET_SIZE = 5000
-BATCH_SIZE = 10
+BATCH_SIZE = 50
 
 # Load resources
 with open(MODELS_PATH, "r") as f:
@@ -70,7 +70,7 @@ async def get_completion(session, messages, model, include_thinking=True):
 
         if status == 429:
             raise RateLimitError(f"Rate limit hit for model {model}")
-            
+
         if status != 200:
             print(f"Error: {status} - {error_text}")
             return None
@@ -102,41 +102,43 @@ async def generate_system_prompt_task(session, sem):
                 if content:
                     return {"model": model, "output": content.strip()}
             except RateLimitError:
-                print(f"Rate limit hit for {model}, retrying with another model...")
+                print(f"Rate limit hit for {model}, waiting 10s then retrying with another model...")
+                await asyncio.sleep(10)
                 continue
         return None
 
 async def generate_answers_task(session, system_prompt_data, sem):
     system_prompt = system_prompt_data['output']
     
-    max_retries = 5
+    max_retries = 10
     for attempt in range(max_retries):
         model = random.choice(MODELS)
-        answers = []
-        failed = False
         
         print(f"Generating answers with {model} for a system prompt (Attempt {attempt+1})...")
         
-        for i, question in enumerate(QUESTIONS):
+        async def fetch_single_answer(question):
             async with sem:
                 messages = [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": question}
                 ]
-                # Add a small delay to be nice to the API
-                await asyncio.sleep(0.5) 
                 try:
-                    answer = await get_completion(session, messages, model)
-                    if answer is None:
-                        answer = "[Error]"
-                    answers.append(answer)
+                    return await get_completion(session, messages, model)
                 except RateLimitError:
-                    print(f"Rate limit hit for {model} on question {i+1}, switching model...")
-                    failed = True
-                    break
+                    return "RATE_LIMIT"
+                except Exception:
+                    return None
+
+        # Run all questions in parallel
+        results = await asyncio.gather(*[fetch_single_answer(q) for q in QUESTIONS])
         
-        if failed:
+        # Check for failures
+        if any(r is None or r == "RATE_LIMIT" for r in results):
+            print(f"Failed to get all answers with {model} (Rate Limit or Error), waiting 10s then switching model...")
+            await asyncio.sleep(10)
             continue
+            
+        answers = results
             
         formatted_input = INPUT_TEMPLATE.format(
             answer_1=answers[0],
@@ -201,8 +203,30 @@ async def main():
         with open(DATASET_JSON_PATH, 'r', encoding='utf-8') as f:
             try:
                 data = json.load(f)
+                
+                # Filter out [Error] entries
+                valid_indices = [i for i, item in enumerate(data) if "[Error]" not in item["input"]]
+                if len(valid_indices) < len(data):
+                    print(f"Found and removing {len(data) - len(valid_indices)} entries with [Error].")
+                    
+                    # Filter system_prompt.json first to keep them in sync
+                    if os.path.exists(SYSTEM_PROMPT_JSON_PATH):
+                        with open(SYSTEM_PROMPT_JSON_PATH, 'r', encoding='utf-8') as f_sp:
+                            sp_data = json.load(f_sp)
+                        
+                        if len(sp_data) >= len(data):
+                            new_sp_data = [sp_data[i] for i in valid_indices]
+                            with open(SYSTEM_PROMPT_JSON_PATH, 'w', encoding='utf-8') as f_sp_out:
+                                json.dump(new_sp_data, f_sp_out, indent=4)
+                    
+                    # Filter dataset.json
+                    data = [data[i] for i in valid_indices]
+                    with open(DATASET_JSON_PATH, 'w', encoding='utf-8') as f_out:
+                        json.dump(data, f_out, indent=4)
+                
                 current_count = len(data)
-            except:
+            except Exception as e:
+                print(f"Error loading dataset: {e}")
                 current_count = 0
     else:
         current_count = 0
@@ -212,7 +236,7 @@ async def main():
         print("Target dataset size reached. Exiting.")
         return
 
-    sem = asyncio.Semaphore(5) # Limit concurrency
+    sem = asyncio.Semaphore(50) # Limit concurrency
     
     async with aiohttp.ClientSession() as session:
         while current_count < TARGET_DATASET_SIZE:
